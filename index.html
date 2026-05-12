@@ -1459,8 +1459,13 @@ function EstoqueAlertas({sugestoes,setSugestoes}){
       if(!itens.length){setImportMsg('⚠ Nenhum item encontrado em '+dep+'. Verifique o formato.');return;}
       var tagged=itens.map(function(x){return Object.assign({},x,{deposito:dep});});
       var key=function(x){return x.cod+'::'+(x.deposito||'Geral');};
+      var codsImport=new Set(tagged.map(function(x){return x.cod;}));
       var newByKey={};tagged.forEach(function(x){newByKey[key(x)]=x;});
-      var kept=(sugestoes||[]).filter(function(x){return!newByKey[key(x)];});
+      var kept=(sugestoes||[]).filter(function(x){
+        if(newByKey[key(x)])return false;
+        if((x.deposito||'Geral')==='Geral'&&codsImport.has(x.cod))return false;
+        return true;
+      });
       var final=kept.concat(tagged);
       setSugestoes(final);store.set('sugestoes',final);
       setImportMsg('✓ '+dep+': '+tagged.length+' itens importados!');
@@ -1471,23 +1476,46 @@ function EstoqueAlertas({sugestoes,setSugestoes}){
   var fornList=useMemo(function(){var s=new Set(sugestoes.map(function(x){return x.fornecedor_nome||'Sem Fornecedor';}));return Array.from(s).sort();},[sugestoes]);
   var depositoList=useMemo(function(){var s=new Set(sugestoes.map(function(x){return x.deposito||'Geral';}));return Array.from(s).sort();},[sugestoes]);
 
-  var kpis=useMemo(function(){
-    var comEst=sugestoes.filter(function(s){return(s.estoque||0)>0;});
-    var semEst=sugestoes.filter(function(s){return(s.estoque||0)<=0;});
-    var valorTotal=comEst.reduce(function(a,s){return a+(s.estoque||0)*(s.custo_unit||0);},0);
-    var valorRuptura=semEst.reduce(function(a,s){return a+(s.custo_unit||0)*((s.sugestao_pedido||0)||1);},0);
-    return{comEst:comEst.length,semEst:semEst.length,valorTotal:valorTotal,pctRuptura:sugestoes.length>0?Math.round(semEst.length/sugestoes.length*100):0};
+  // Agrega estoque por SKU (cod) — elimina duplicatas de importações multi-depósito
+  var dedupedSug=useMemo(function(){
+    var m={};
+    sugestoes.forEach(function(s){
+      var c=s.cod;if(!c)return;
+      if(!m[c]){m[c]=Object.assign({},s,{_sum:0,_deps:[]});}
+      m[c]._sum+=(s.estoque||0);
+      var dn=s.deposito||'Geral';if(!m[c]._deps.includes(dn))m[c]._deps.push(dn);
+      if((s.media_diaria||0)>0){m[c].media_diaria=s.media_diaria;m[c].media_fonte=s.media_fonte;}
+      if((s.custo_unit||0)>0)m[c].custo_unit=s.custo_unit;
+      if(s.fornecedor_nome&&!m[c].fornecedor_nome)m[c].fornecedor_nome=s.fornecedor_nome;
+      if((s.sugestao_pedido||0)>0&&!(m[c].sugestao_pedido>0))m[c].sugestao_pedido=s.sugestao_pedido;
+    });
+    return Object.values(m).map(function(s){
+      var est=s._sum;var med=s.media_diaria||0;
+      var cob=med>0?Math.max(0,Math.round(est/med)):0;
+      return Object.assign({},s,{
+        estoque:est,dias_cobertura:cob,
+        status:est<=0?'SEM ESTOQUE':cob<15?'CRÍTICO':cob<30?'REPOR':'OK',
+        deposito:s._deps.length>1?s._deps.join(' + '):s._deps[0]||'Geral'
+      });
+    });
   },[sugestoes]);
+
+  var kpis=useMemo(function(){
+    var comEst=dedupedSug.filter(function(s){return(s.estoque||0)>0;});
+    var semEst=dedupedSug.filter(function(s){return(s.estoque||0)<=0;});
+    var valorTotal=comEst.reduce(function(a,s){return a+(s.estoque||0)*(s.custo_unit||0);},0);
+    return{comEst:comEst.length,semEst:semEst.length,valorTotal:valorTotal,pctRuptura:dedupedSug.length>0?Math.round(semEst.length/dedupedSug.length*100):0};
+  },[dedupedSug]);
 
   var stats=useMemo(function(){
-    var c=sugestoes.filter(function(s){return(s.estoque||0)<=0;}).length;
-    var a=sugestoes.filter(function(s){var d=s.dias_cobertura||0;return d>0&&d<30;}).length;
-    var o=sugestoes.filter(function(s){return(s.dias_cobertura||0)>=30;}).length;
+    var c=dedupedSug.filter(function(s){return(s.estoque||0)<=0;}).length;
+    var a=dedupedSug.filter(function(s){var d=s.dias_cobertura||0;return d>0&&d<30;}).length;
+    var o=dedupedSug.filter(function(s){return(s.dias_cobertura||0)>=30;}).length;
     return{c,a,o};
-  },[sugestoes]);
+  },[dedupedSug]);
 
   var {posItems,zeroItems}=useMemo(function(){
-    var base=sugestoes.filter(function(s){
+    var base=dedupedSug.filter(function(s){
       var d=s.dias_cobertura||0;
       if(filtAlerta==='critico'&&(s.estoque||0)>0)return false;
       if(filtAlerta==='alerta'&&(d<=0||d>=30))return false;
@@ -1506,7 +1534,7 @@ function EstoqueAlertas({sugestoes,setSugestoes}){
     else pos.sort(function(a,b){return(a.dias_cobertura||0)-(b.dias_cobertura||0);});
     zero.sort(function(a,b){return norm(a.produto).localeCompare(norm(b.produto));});
     return{posItems:pos,zeroItems:zero};
-  },[sugestoes,filtAlerta,filtFornList,filtDeposito,busca,sortBy]);
+  },[dedupedSug,filtAlerta,filtFornList,filtDeposito,busca,sortBy]);
 
   var pills=[{v:'',l:'Todos',c:'#2D6A2D',bg:'#EBF3EB'},{v:'critico',l:'🔴 Crítico ('+stats.c+')',c:'#C0392B',bg:'#FDECEA'},{v:'alerta',l:'🟡 Alerta ('+stats.a+')',c:'#D68910',bg:'#FEF9E7'},{v:'ok',l:'🟢 OK ('+stats.o+')',c:'#1E8449',bg:'#EAFAF1'}];
   var depCards=[
