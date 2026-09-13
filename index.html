@@ -4,9 +4,12 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Gestão de Compras — Amora</title>
+<link rel="icon" type="image/png" href="amora-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#faf7f8;min-height:100vh;color:#3F1D15;}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#faf7f8;min-height:100vh;color:#3F1D15;}
 input,select,textarea{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid #d9bcc6;border-radius:8px;background:#fff;color:#3F1D15;width:100%;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:#651D32;box-shadow:0 0 0 2px rgba(101,29,50,.12);}
 button{font-family:inherit;cursor:pointer;}
@@ -520,9 +523,9 @@ function LoginScreen({denied,onLogout}){
   return h('div',{style:{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#fbf1f4,#f4f0f2)',padding:24}},
     h('div',{style:{background:'#fff',borderRadius:16,padding:'40px 36px',width:'100%',maxWidth:380,boxShadow:'0 4px 20px rgba(101,29,50,.12)',border:'1px solid #e2d8df',textAlign:'center'}},
       h('img',{src:'amora-logo.png',alt:'Amora Importadora & Distribuidora',style:{width:210,maxWidth:'82%',borderRadius:10,marginBottom:16,display:'block',marginLeft:'auto',marginRight:'auto'}}),
-      h('div',{style:{fontSize:32,marginBottom:4}},'🛒'),
-      h('h1',{style:{fontSize:22,fontWeight:700,color:'#3F1D15'}},'Gestão de Compras'),
-      h('p',{style:{fontSize:13,color:'#7a6575',marginTop:4,marginBottom:26}},'Amora Importadora & Distribuidora'),
+      h('div',{style:{fontSize:30,marginBottom:6}},'🛒'),
+      h('h1',{style:{fontSize:15,fontWeight:700,color:'#651D32',fontFamily:"'Syncopate',sans-serif",textTransform:'uppercase',letterSpacing:'.16em',margin:0}},'Compras'),
+      h('p',{style:{fontSize:13,color:'#7a6575',marginTop:8,marginBottom:26}},'Gestão de Compras · Amora Importadora & Distribuidora'),
       denied?h('p',{style:{color:'#C0392B',fontSize:13,marginBottom:16,padding:'10px 12px',background:'#FDECEA',borderRadius:8,textAlign:'left'}},
         denied==='no-permission'?'Você não tem acesso ao módulo de Compras. Peça a um administrador do portal para liberar.':
         denied==='inactive'?'Seu acesso está desativado. Fale com um administrador.':
