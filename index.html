@@ -1570,6 +1570,7 @@ function EstoqueAlertas({sugestoes,setSugestoes}){
   var [buscaPos,setBuscaPos]=useState('');
   var [importingDep,setImportingDep]=useState(null);
   var [importMsg,setImportMsg]=useState('');
+  var [uploadDates,setUploadDates]=useState(function(){try{return JSON.parse(localStorage.getItem('_uploadDates')||'{}');}catch(e){return{};}});
   var fileRS=useRef(null);var fileBo=useRef(null);
 
   async function handleImport(file,dep){
@@ -1589,6 +1590,8 @@ function EstoqueAlertas({sugestoes,setSugestoes}){
       });
       var final=kept.concat(tagged);
       setSugestoes(final);store.set('sugestoes',final);
+      var nd=Object.assign({},uploadDates);nd[dep]=new Date().toISOString();
+      setUploadDates(nd);try{localStorage.setItem('_uploadDates',JSON.stringify(nd));}catch(e){}
       setImportMsg('✓ '+dep+': '+tagged.length+' itens importados!');
       setTimeout(function(){setImportMsg('');},3000);
     }catch(e){setImportMsg('Erro ('+dep+'): '+e.message);}finally{setImportingDep(null);}
@@ -1713,7 +1716,10 @@ function EstoqueAlertas({sugestoes,setSugestoes}){
               h('span',{style:{fontSize:28}},dc.icon),
               h('div',null,
                 h('div',{style:{fontWeight:700,fontSize:15,color:dc.cor}},dc.dep),
-                h('div',{style:{fontSize:11,color:'#7a6575',marginTop:1}},count>0?count+' itens carregados':'Nenhum item ainda')
+                h('div',{style:{fontSize:11,color:'#7a6575',marginTop:1}},count>0?count+' itens carregados':'Nenhum item ainda'),
+                uploadDates[dc.dep]?h('div',{style:{fontSize:10,color:'#9a8791',marginTop:2}},
+                  '🕐 Atualizado: '+new Date(uploadDates[dc.dep]).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
+                ):null
               )
             ),
             h('div',{style:{fontSize:12,color:'#7a6575',lineHeight:1.5}},'Arraste o arquivo .xls/.xlsx aqui',h('br'),h('span',{style:{color:dc.cor,fontWeight:500}},'ou clique para selecionar')),
@@ -1888,6 +1894,38 @@ function PedidosAbertos({pedidos,setPedidos,fornecedores,showToast}){
   var [expandId,setExpandId]=useState(null);
   var [editModal,setEditModal]=useState(null);
   var [editForm,setEditForm]=useState({});
+  var [importingOC,setImportingOC]=useState(false);
+  var fileOCRef=useRef(null);
+
+  async function handleImportOCERP(file){
+    if(!file)return;
+    setImportingOC(true);
+    try{
+      var parsed=await parseOCERP(file);
+      if(!parsed.itens.length){showToast('⚠ Nenhum item encontrado na OC. Verifique o arquivo.');return;}
+      // ID: prefere o número do ERP, garante unicidade
+      var ocId='OC-ERP-'+parsed.ocNum;
+      var jaExiste=pedidos.some(function(p){return p.id===ocId;});
+      if(jaExiste){showToast('⚠ OC '+ocId+' já está cadastrada no sistema.');return;}
+      var nova={
+        id:ocId,
+        fornecedor_nome:parsed.fornNome,
+        itens:parsed.itens,
+        valor_total:parsed.valorTotal,
+        status:'OC Enviada',
+        data_emissao:parsed.data_emissao,
+        previsao_entrega:'',
+        data_envio:parsed.data_emissao,
+        data_recebimento:null,
+        cond_pagamento:parsed.cond_pagamento,
+        fonte:'erp',
+        historico:[{status:'OC Enviada',data:new Date().toISOString(),user:_curEmail||'',obs:'Importada do ERP'}]
+      };
+      var arr=[nova].concat(pedidos);
+      setPedidos(arr);store.set('pedidos',arr);
+      showToast('✅ OC '+ocId+' importada — '+parsed.itens.length+' itens · R$ '+parsed.valorTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}));
+    }catch(e){showToast('Erro ao importar OC: '+e.message);}finally{setImportingOC(false);if(fileOCRef.current)fileOCRef.current.value='';}
+  }
 
   var STATUSES=OC_FLOW.concat(['Divergência','Cancelado']);
 
@@ -2010,6 +2048,12 @@ function PedidosAbertos({pedidos,setPedidos,fornecedores,showToast}){
         h('input',{placeholder:'Buscar OC ou fornecedor…',value:busca,onChange:function(e){setBusca(e.target.value);},style:{flex:'1 1 200px',maxWidth:300}}),
         h('div',{style:{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexShrink:0}},
           pedidos.length>0?h('span',{style:{fontSize:12,color:'#7a6575'}},'Em aberto: '+fmt$(valAberto)):null,
+          h('button',{className:'btn btn-outline btn-sm',disabled:importingOC,
+            onClick:function(){fileOCRef.current&&fileOCRef.current.click();},
+            title:'Importa OC gerada pelo ERP (.xlsx)',style:{borderColor:'#2E86C1',color:'#2E86C1',fontWeight:600}},
+            importingOC?'Importando…':'📥 Importar OC do ERP'),
+          h('input',{type:'file',accept:'.xlsx,.xls',ref:fileOCRef,style:{display:'none'},
+            onChange:function(e){if(e.target.files[0])handleImportOCERP(e.target.files[0]);}}),
           h('div',{style:{display:'flex',borderRadius:6,overflow:'hidden',border:'1px solid #d9bcc6'}},
             h('button',{onClick:function(){setViewMode('kanban');},style:{padding:'5px 12px',fontSize:12,border:'none',cursor:'pointer',fontWeight:viewMode==='kanban'?700:400,background:viewMode==='kanban'?'#651D32':'#fff',color:viewMode==='kanban'?'#fff':'#651D32'}},'📋 Kanban'),
             h('button',{onClick:function(){setViewMode('lista');},style:{padding:'5px 12px',fontSize:12,border:'none',cursor:'pointer',fontWeight:viewMode==='lista'?700:400,background:viewMode==='lista'?'#651D32':'#fff',color:viewMode==='lista'?'#fff':'#651D32'}},'☰ Lista')
@@ -2222,6 +2266,64 @@ function parseValidades(file){
           }
         });
         resolve(all);
+      }catch(err){reject(err);}
+    };
+    reader.onerror=function(){reject(new Error('Falha ao ler arquivo'));};
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── PARSER OC DO ERP (Excel exportado pelo sistema) ─────────────────────
+function parseOCERP(file){
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var ws=wb.Sheets[wb.SheetNames[0]];
+        var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+        // Linha 0: "Ordem de Compra Nº XXX Data: DD/MM/YYYY"
+        var hdr=String(rows[0]?.[0]||'');
+        var numM=hdr.match(/N[ºo°]?\s*(\d+)/i);
+        var dateM=hdr.match(/Data:\s*(\d{2}\/\d{2}\/\d{4})/i);
+        var ocNum=numM?numM[1]:'';
+        var ocDate=dateM?dateM[1].split('/').reverse().join('-'):new Date().toISOString().slice(0,10);
+        // Linha 4: "Fornecedor: NAME Código: XXX..."
+        var suppStr=String(rows[4]?.[0]||rows[3]?.[0]||'');
+        var suppM=suppStr.match(/Fornecedor:\s*(.+?)(?:\s+C[oó]d(?:igo)?:|\s*$)/i);
+        var fornNome=suppM?suppM[1].trim():'Fornecedor ERP';
+        // Acha linha de cabeçalho da tabela (tem "Quant" ou "Código")
+        var hdrIdx=-1;
+        for(var i=0;i<rows.length;i++){if(rows[i]&&rows[i].some(function(c){return c&&/quant/i.test(String(c));})){hdrIdx=i;break;}}
+        // Lê itens até "Tot Produtos" ou "Condição"
+        var itens=[];
+        if(hdrIdx>=0){
+          for(var j=hdrIdx+1;j<rows.length;j++){
+            var r=rows[j];if(!r)continue;
+            var f=String(r[0]||'');
+            if(/tot\s*prod|condi/i.test(f))break;
+            var cod=r[1]!=null?String(r[1]).trim():'';
+            var nome=r[2]!=null?String(r[2]).trim():'';
+            var qtd=parseFloat(r[5])||0;
+            var un=r[6]!=null?String(r[6]).trim():'';
+            var custo=parseFloat(r[7])||0;
+            var val=parseFloat(r[8])||qtd*custo;
+            if(cod&&nome&&qtd>0)itens.push({id:'erp-'+cod+'-'+Date.now(),cod:cod,produto:nome,un:un,qtd:qtd,custo_unit:custo,valor:val,obs:''});
+          }
+        }
+        // Valor total: linha "Tot Produtos" → próxima linha coluna 10
+        var valorTotal=itens.reduce(function(a,x){return a+x.valor;},0);
+        var cond='';
+        for(var k=0;k<rows.length;k++){
+          var rk=rows[k];if(!rk)continue;
+          if(/tot\s*prod/i.test(String(rk[0]||''))&&rows[k+1]){
+            var vv=parseFloat(rows[k+1][10]);if(!isNaN(vv))valorTotal=vv;
+          }
+          if(/condi.+pagamento/i.test(String(rk[0]||''))){
+            var cm=String(rk[0]).match(/Condi.+?:\s*(.+)/i);if(cm)cond=cm[1].trim();
+          }
+        }
+        resolve({ocNum:ocNum,fornNome:fornNome,itens:itens,valorTotal:valorTotal,data_emissao:ocDate,cond_pagamento:cond});
       }catch(err){reject(err);}
     };
     reader.onerror=function(){reject(new Error('Falha ao ler arquivo'));};
